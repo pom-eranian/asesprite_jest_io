@@ -1,3 +1,8 @@
+-------------------------------------------------------------------------------
+
+-- edited for texturepacker format
+
+-------------------------------------------------------------------------------
 local json = {_version = "0.1.1"}
 
 -------------------------------------------------------------------------------
@@ -328,7 +333,7 @@ end
     jest_import_packed_atlas
     Useful in case you lose your ASE file and only have the output .png & .json files
     This script IMPORTS packed sprites, e,g texture atlases, or exports from aseprite, back into their original form.
-    Just open the png file up as the current tab, select the corresponding json and done. 
+    Just open the png file up as the current tab, select the corresponding json and done.
     !!WARNING: PROBABLY DOES NOT SUPPORT ROTATED TEXTURE ATLASES!!
     It will also import tags if they exist in the json file
 
@@ -364,14 +369,14 @@ or hash form:
         "sourceSize": {"w":31,"h":301}
 }}}
 
-    If you see all white colors, it means you didn't have the packed sprite selected as the current tab when running this script 
+    If you see all white colors, it means you didn't have the packed sprite selected as the current tab when running this script
 
     Check out jest_import_existing_tags(https://github.com/jestarray/aseprite-scripts/blob/master/jest_import_existing_tags.lua) if your json file also has meta data animation tags
   Credits:
     json decoding by rxi - https://github.com/rxi/json.lua
-    
+
     script by jest(https://github.com/jestarray/aseprite-scripts) - for aseprite versions > 1.2.10
-    
+
     Public domain, do whatever you want
 ]]
 
@@ -436,9 +441,41 @@ local function is_array(hash)
     return res
 end
 
+-- adapted from jhash_to_jarray()
+local function sort_by_framename(hash)
+    local sorted_frames = {}
+
+    for i, frame in ipairs(hash) do
+        table.insert(sorted_frames, frame)
+    end
+
+    table.sort(sorted_frames, function(a, b)
+        return a.filename < b.filename
+    end)
+
+    return sorted_frames
+end
+
+local function sort_json_table(table)
+    local res = {}
+
+    res.frames = table.textures[1].frames
+    res.meta = table.meta
+    res.meta.app = ""
+    res.meta.version = ""
+    res.meta.image = table.textures[1].image
+    res.meta.format = table.textures[1].format
+    -- res.meta.size = table.textures[1].size
+    res.meta.scale = table.textures[1].scale
+    res.frames = sort_by_framename(res.frames)
+    return res
+end
+
+
 local function build(filepath)
     local f = io.open(filepath, "r+"):read('a')
     local jsondata = json.decode(f)
+    local is_txtpacker = false
 
     if jsondata == nil then
         print("could not load file " .. filepath)
@@ -447,12 +484,20 @@ local function build(filepath)
         return 1
     end
 
+    -- catching our texturepacker format before default check
+    if jsondata.textures ~= nil then
+        jsondata = sort_json_table(jsondata)
+        is_txtpacker = true
+
+    elseif type(jsondata.frames) ~= "nil" then
+        if not is_array(jsondata.frames) then
+            -- convert it so we can use it as an array
+            jsondata.frames = jhash_to_jarray(jsondata.frames)
+        end
+    end
+
     local image = app.activeImage
     local sprite = app.activeSprite
-    if not is_array(jsondata.frames) then
-        -- convert it so we can use it as an array
-        jsondata.frames = jhash_to_jarray(jsondata.frames)
-    end
 
     local og_size = jsondata.frames[1].sourceSize
     local new_sprite = Sprite(og_size.w, og_size.h)
@@ -464,7 +509,13 @@ local function build(filepath)
         local src_loc = aframe.frame
         local place_loc = aframe.spriteSourceSize
         local dest_img = new_sprite.cels[index].image
-        frame = new_sprite:newFrame()
+
+        if is_txtpacker then
+            frame = new_sprite:newFrame(index)
+        else
+            frame = new_sprite:newFrame()
+        end
+
         draw_section(image, dest_img, src_loc, place_loc, sprite.palettes[1])
         if aframe.duration ~= nil then
             frame.previous.duration = aframe.duration / 1000
@@ -481,7 +532,7 @@ local function build(filepath)
             local to = tag_data.to + 1
             local direction = tag_data.direction
 
-            -- seems like exporting tags does not export their colors so no way to import them until aseprite starts exporting color of a tag in the output json file  
+            -- seems like exporting tags does not export their colors so no way to import them until aseprite starts exporting color of a tag in the output json file
 
             local new_tag = new_sprite:newTag(from, to)
             new_tag.name = name
@@ -500,7 +551,7 @@ local function build(filepath)
         end
     end
 
-    -- FIXES CEL BOUNDS FROM BEING INCORRECT https://github.com/aseprite/aseprite/issues/3206 
+    -- FIXES CEL BOUNDS FROM BEING INCORRECT https://github.com/aseprite/aseprite/issues/3206
     app.command.CanvasSize {
         ui = false,
         left = 0,
