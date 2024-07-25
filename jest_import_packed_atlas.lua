@@ -496,8 +496,8 @@ local function build(filepath)
         end
     end
 
-    local image = app.activeImage
-    local sprite = app.activeSprite
+    local image = app.image
+    local sprite = app.sprite
 
     local og_size = jsondata.frames[1].sourceSize
     local new_sprite = Sprite(og_size.w, og_size.h)
@@ -505,15 +505,78 @@ local function build(filepath)
     new_sprite:setPalette(sprite.palettes[1])
 
     local frame = new_sprite.frames[1]
+    
+    local sep = app.fs.pathSeparator -- for multiplatform compatibility
+
+    local cel_palette = Palette(34)
+    cel_palette:setColor(0, Color{ r=153, g=30, b=20, a=255 })
+    cel_palette:setColor(1, Color{ r=252, g=75, b=17, a=255 })
+    cel_palette:setColor(2, Color{ r=251, g=140, b=26, a=255 })
+    cel_palette:setColor(3, Color{ r=248, g=179, b=48, a=255 })
+    cel_palette:setColor(4, Color{ r=248, g=233, b=48, a=255 })
+    cel_palette:setColor(5, Color{ r=176, g=243, b=40, a=255 })
+    cel_palette:setColor(6, Color{ r=67, g=201, b=105, a=255 })
+    cel_palette:setColor(7, Color{ r=48, g=213, b=200, a=255 })
+    cel_palette:setColor(8, Color{ r=23, g=177, b=243, a=255 })
+    cel_palette:setColor(9, Color{ r=3, g=122, b=255, a=255 })
+    cel_palette:setColor(10, Color{ r=11, g=32, b=222, a=255 })
+    cel_palette:setColor(11, Color{ r=15, g=1, b=196, a=255 })
+    cel_palette:setColor(12, Color{ r=80, g=27, b=240, a=255 })
+    cel_palette:setColor(13, Color{ r=79, g=0, b=165, a=255 })
+    cel_palette:setColor(14, Color{ r=166, g=1, b=147, a=255 })
+    cel_palette:setColor(15, Color{ r=254, g=74, b=211, a=255 })
+    cel_palette:setColor(16, Color{ r=250, g=182, b=232, a=255 })
+    cel_palette:setColor(17, Color{ r=89, g=19, b=12, a=255 })
+    cel_palette:setColor(18, Color{ r=122, g=48, b=23, a=255 })
+    cel_palette:setColor(19, Color{ r=140, g=77, b=14, a=255 })
+    cel_palette:setColor(20, Color{ r=140, g=100, b=27, a=255 })
+    cel_palette:setColor(21, Color{ r=158, g=147, b=30, a=255 })
+    cel_palette:setColor(22, Color{ r=110, g=153, b=24, a=255 })
+    cel_palette:setColor(23, Color{ r=19, g=145, b=55, a=255 })
+    cel_palette:setColor(24, Color{ r=31, g=135, b=126, a=255 })
+    cel_palette:setColor(25, Color{ r=11, g=93, b=128, a=255 })
+    cel_palette:setColor(26, Color{ r=0, g=17, b=148, a=255 })
+    cel_palette:setColor(27, Color{ r=11, g=11, b=143, a=255 })
+    cel_palette:setColor(28, Color{ r=8, g=1, b=110, a=255 })
+    cel_palette:setColor(29, Color{ r=42, g=14, b=125, a=255 })
+    cel_palette:setColor(30, Color{ r=52, g=0, b=107, a=255 })
+    cel_palette:setColor(31, Color{ r=92, g=0, b=80, a=255 })
+    cel_palette:setColor(32, Color{ r=133, g=38, b=111, a=255 })
+    cel_palette:setColor(33, Color{ r=133, g=97, b=123, a=255 })
+
+    local unique_index = 0
+    local duplicate_index = 0
+    local duplicate_table = {}
+    
     for index, aframe in pairs(jsondata.frames) do
         local src_loc = aframe.frame
         local place_loc = aframe.spriteSourceSize
-        local dest_img = new_sprite.cels[index].image
+        local dest_cel = new_sprite.cels[index]
+        local dest_img = dest_cel.image
+        
+        -- hash is the topleftmost pixel of each sprite, assumes no partial spriteage
+        local frame_src_hash = aframe.frame['x'] .. ',' .. aframe.frame['y']
+        local frame_data = ": { x: " .. aframe.frame['x'] .. ", y: " .. aframe.frame['y'] .. ", w: " .. aframe.frame['w'] .. ", h: " .. aframe.frame['h'] .. ' }'
 
         if is_txtpacker then
             frame = new_sprite:newFrame(index)
         else
             frame = new_sprite:newFrame()
+        end
+
+        if duplicate_table[frame_src_hash] == nil then -- first encounter
+            dest_cel.data = unique_index .. frame_data
+            unique_index = unique_index + 1 -- new unique frame encountered
+            duplicate_table[frame_src_hash] = {0, index} -- store index
+        elseif type(duplicate_table[frame_src_hash]) == "table" then -- second
+            dest_cel.data = new_sprite.cels[duplicate_table[frame_src_hash][2]].data -- pull from initial
+            new_sprite.cels[duplicate_table[frame_src_hash][2]].color = cel_palette:getColor(duplicate_index % 34) -- colour first encounter
+            duplicate_table[frame_src_hash] = duplicate_index -- overwrite table with palette index
+            dest_cel.color = cel_palette:getColor(duplicate_index % 34) -- colour second/current encounter
+            duplicate_index = duplicate_index + 1
+        else
+            dest_cel.data = duplicate_table[frame_src_hash] .. frame_data
+            dest_cel.color = cel_palette:getColor(duplicate_table[frame_src_hash] % 34)
         end
 
         draw_section(image, dest_img, src_loc, place_loc, sprite.palettes[1])
@@ -600,6 +663,7 @@ else
     }:button{
         id = "Ok",
         text = "Ok",
+        focus = true,
         onclick = function()
             build(dlg.data[PICKER])
             dlg:close()
